@@ -1,0 +1,22 @@
+---
+description: 
+globs: *.tsx,*.css
+alwaysApply: false
+---
+# 样式指南
+
+本项目主要使用 Tailwind CSS 和 Shadcn UI 构建用户界面。
+
+1.  **基础样式**: 使用 [Tailwind CSS](mdc:https:/tailwindcss.com) 进行原子化 CSS 样式定义。遵循 [`tailwind.config.js`](mdc:tailwind.config.js) (或相关配置文件如 [`postcss.config.mjs`](mdc:postcss.config.mjs)) 中的配置。
+    *   优先使用 Tailwind 的功能类。
+    *   对于可重用的样式组合，考虑使用 `@apply` 或创建自定义组件。
+    *   全局样式和 CSS 变量定义在 [`src/app/globals.css`](mdc:src/app/globals.css) 中。
+2.  **UI 组件库**: 使用 [Shadcn UI](mdc:https:/ui.shadcn.com) 作为基础组件库。组件位于 [`src/components/ui/`](mdc:src/components/ui) 目录下。
+    *   直接导入和使用这些组件。
+    *   如果需要对 Shadcn 组件进行定制，优先考虑通过 props 或组合的方式，其次再考虑直接修改组件源码。
+    *   组件的配置文件为 [`components.json`](mdc:components.json)。
+3.  **图标**: 使用 [Lucide React](mdc:https:/lucide.dev/guide/packages/lucide-react) 图标库。
+    *   按需导入图标：`import { IconName } from 'lucide-react';`
+    *   通过 Tailwind CSS 控制图标的大小和颜色。
+4.  **响应式设计**: 使用 Tailwind CSS 的响应式修饰符（如 `sm:`, `md:`, `lg:`）来实现响应式布局。
+5.  **一致性**: 保持界面元素（颜色、间距、字体大小等）的一致性。尽量复用 Shadcn 组件和 Tailwind 主题配置中定义的值。

@@ -1,0 +1,46 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 目录结构
+
+本项目采用基于 Next.js App Router 的标准目录结构。
+
+*   **`.cursor/`**: 存放 Cursor AI 相关配置和规则。
+    *   `rules/`: 存放项目特定的规则文件（如本文档）。
+*   **`.next/`**: Next.js 的构建输出目录（自动生成）。
+*   **`.specstory/`**: (可能是特定工具的目录，根据实际用途补充说明)
+*   **`public/`**: 存放静态资源文件，如图片、字体等。这些文件可以通过根路径 `/` 直接访问。
+*   **`src/`**: 项目源代码主目录。
+    *   **`middleware.ts`**: Next.js 中间件，用于处理请求（例如 Supabase 会话刷新）。
+    *   **`app/`**: Next.js App Router 的核心目录。
+        *   `layout.tsx`: 根布局文件。
+        *   `page.tsx`: 根页面文件。
+        *   `globals.css`: 全局样式文件。
+        *   `api/`: 存放 API 路由 (Route Handlers)。
+        *   子目录代表路由段，可以在其中定义 `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `template.tsx` 等。
+    *   **`components/`**: 存放可重用的 React 组件。
+        *   `ui/`: 由 Shadcn UI CLI 管理的基础 UI 组件 ([`components.json`](mdc:components.json))。
+        *   (可以创建其他子目录来组织自定义组件，例如 `forms/`, `common/` 等)。
+    *   **`lib/`**: 存放辅助函数、工具函数、第三方服务客户端、状态管理逻辑等。
+        *   `supabase/`: 存放 Supabase 相关的代码。
+            *   [`client.ts`](mdc:src/lib/supabase/client.ts): 用于创建 Supabase 浏览器客户端的辅助函数。
+            *   [`server.ts`](mdc:src/lib/supabase/server.ts): 用于创建 Supabase 服务器端客户端的辅助函数。
+        *   `store/`: 存放状态管理相关的代码 (例如 Zustand, Redux)。
+        *   `hooks/`: 存放自定义 React Hooks。
+        *   (可以创建其他子目录，例如 `utils/`, `constants/` 等)。
+    *   **`types/`**: 存放共享的 TypeScript 类型定义和接口。
+*   **`node_modules/`**: 项目依赖（自动生成）。
+*   **Configuration Files**: 项目根目录下的配置文件。
+    *   [`next.config.ts`](mdc:next.config.ts): Next.js 配置文件。
+    *   [`tsconfig.json`](mdc:tsconfig.json): TypeScript 配置文件。
+    *   [`tailwind.config.js` / `postcss.config.mjs`](mdc:postcss.config.mjs): Tailwind CSS 和 PostCSS 配置文件。
+    *   [`package.json`](mdc:package.json): 项目依赖和脚本定义。
+    *   [`package-lock.json`](mdc:package-lock.json): 锁定依赖版本。
+    *   [`.env.local`](mdc:.env.local): 本地环境变量（不提交）。
+    *   [`.gitignore`](mdc:.gitignore): 指定 Git 忽略的文件和目录。
+    *   [`eslint.config.mjs`](mdc:eslint.config.mjs): ESLint 配置文件。
+    *   [`components.json`](mdc:components.json): Shadcn UI 配置文件。
+
+请保持此结构的一致性，以便于项目维护和团队协作。

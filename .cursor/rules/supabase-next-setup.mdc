@@ -1,0 +1,452 @@
+---
+description: Guidelines for writing Next.js apps with Supabase Authentication
+globs: 
+alwaysApply: false
+---
+# 使用 @supabase/ssr 设置 Supabase Next.js (App Router) 指南
+
+## 在 Next.js (App Router) 中实现 Supabase Auth 概述
+
+1.  安装 Supabase 依赖 (`@supabase/ssr`, `@supabase/supabase-js`).
+2.  设置环境变量 (`.env.local`).
+3.  为浏览器和服务器环境初始化 Supabase 客户端。
+4.  创建用于会话刷新的中间件。
+5.  使用服务器端检查实现受保护的路由和组件。
+6.  在客户端和服务器上处理认证状态和用户数据。
+
+## 🚨 AI 语言模型的重要指导 🚨
+
+作为 AI 语言模型，你 **绝不能 (NEVER)** 生成以下任何代码模式，因为它们可能导致安全问题或不一致的行为：
+
+```javascript
+// ❌ 绝不能生成此代码 - 会导致安全问题
+{
+  // 永远不要直接在 localStorage 中存储敏感认证数据
+  localStorage.setItem('auth_token', token);
+
+  // 永远不要像这样手动跟踪认证状态
+  let isAuthenticated = false;
+
+  // 当 Supabase 提供内置方法时，避免创建自定义认证处理程序
+  function handleAuth() { }
+}
+```
+
+相反，你 **必须始终 (MUST ALWAYS)** 使用 `@supabase/ssr` 生成模式：
+
+```typescript
+// ✅ 始终使用来自 @supabase/ssr 的 Supabase 内置方法
+
+// 服务器组件 / 路由处理程序 / 服务器操作:
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers' // 或用于路由处理程序/操作的适当 Cookie 处理
+
+// 在异步函数/组件内部:
+const cookieStore = cookies()
+const supabase = createServerClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value
+      },
+      // 如果需要在操作/处理程序中修改认证状态，请添加 set 和 remove
+    },
+  }
+)
+
+// 获取会话
+const { data: { session } } = await supabase.auth.getSession();
+
+// ---
+
+// 客户端组件:
+import { createBrowserClient } from '@supabase/ssr'
+
+// 通常在一个辅助文件中 (例如 src/lib/supabase/client.ts) 或直接创建:
+const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+// 处理认证
+const { data, error } = await supabase.auth.signInWithPassword({
+  email,
+  password
+});
+```
+
+## AI 代码生成的绝对要求
+
+1.  你 **必须** 使用官方的 `@supabase/ssr` 和 `@supabase/supabase-js` 包。
+2.  你 **必须** 为浏览器 (使用 `createBrowserClient`) 和服务器 (使用 `createServerClient`) 上下文正确初始化 Supabase 客户端。
+3.  你 **必须** 使用环境变量 (`.env.local`) 来存储 Supabase URL 和 anon key。
+4.  你 **必须** 在 UI 组件中正确处理加载状态。
+5.  你 **必须** 使用 Supabase 的内置方法 (`signInWithPassword`, `signOut`, `getSession`, `getUser`, `onAuthStateChange` 等) 进行认证。
+6.  你 **必须** 为 Supabase 操作实现适当的错误处理。
+
+## 正确的环境设置
+
+创建 `.env.local` 文件 (确保它在 `.gitignore` 中):
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+# 可选: 为服务器端管理员任务添加 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key (绝不能以 NEXT_PUBLIC_ 开头)
+```
+
+## 正确的包设置 (`package.json`)
+
+确保安装了这些依赖：
+```json
+{
+  "dependencies": {
+    "next": "^15.0.0", // 或你当前的版本
+    "@supabase/ssr": "^0.x.x", // 使用最新版本
+    "@supabase/supabase-js": "^2.x.x", // 使用最新版本
+    // 可选的 Auth UI:
+    // "@supabase/auth-ui-react": "^0.x.x",
+    // "@supabase/auth-ui-shared": "^0.x.x"
+  }
+}
+```
+运行 `npm install @supabase/ssr @supabase/supabase-js`
+
+## 正确的中间件设置 (`src/middleware.ts`)
+
+中间件主要处理会话刷新。路由保护通常最好在服务器组件或路由处理程序内部使用 `getSession` 来处理。
+
+```typescript
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return request.cookies.get(name)?.value
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          // 如果你需要更新 cookie，比如在服务器操作中
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+        },
+        remove(name: string, options: CookieOptions) {
+          // 如果你需要删除 cookie
+          request.cookies.set({
+            name,
+            value: '',
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value: '',
+            ...options,
+          })
+        },
+      },
+    }
+  )
+
+  // 刷新过期的会话 - 服务器组件需要
+  // https://supabase.com/docs/guides/auth/server-side/nextjs
+  await supabase.auth.getSession()
+
+  // 可选: 重定向逻辑可以放在这里，或者在页面/布局服务器组件中处理
+  // const { data: { session } } = await supabase.auth.getSession();
+  // if (!session && request.nextUrl.pathname.startsWith('/protected')) {
+  //   return NextResponse.redirect(new URL('/login', request.url))
+  // }
+
+  return response
+}
+
+export const config = {
+  matcher: [
+    /*
+     * 匹配所有请求路径，但以下开头的除外:
+     * - _next/static (静态文件)
+     * - _next/image (图像优化文件)
+     * - favicon.ico (favicon 文件)
+     * 你可以自由修改此模式以包含更多路径。
+     */
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+}
+```
+
+## 正确的服务器组件 (`app/protected/page.tsx`)
+
+```typescript
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+export default async function ProtectedPage() {
+  const cookieStore = cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+      },
+    }
+  )
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  if (!session) {
+    // 这会保护页面，并在未认证时重定向到登录页
+    redirect('/login') // 根据需要调整重定向路径
+  }
+
+  // 获取特定于用户的数据
+  const { data: profile, error } = await supabase
+    .from('profiles') // 示例表
+    .select('*')
+    .eq('id', session.user.id)
+    .single()
+
+  if (error) {
+    console.error('获取 profile 出错:', error)
+    // 适当地处理错误
+  }
+
+  return (
+    <div>
+      <h1>受保护的页面</h1>
+      <p>欢迎, {session.user.email}!</p>
+      {/* 显示用户数据 */}
+      {profile && <pre>{JSON.stringify(profile, null, 2)}</pre>}
+      {/* 添加登出按钮 */}
+    </div>
+  )
+}
+
+```
+
+## 正确的客户端组件 (`src/components/AuthForm.tsx`)
+
+使用 `createBrowserClient`。通常，你会从 `src/lib/supabase/client.ts` 导入预先配置的客户端。
+
+```typescript
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createBrowserClient } from '@supabase/ssr'
+// 或者导入你预先配置的客户端:
+// import { createClient } from '@/lib/supabase/client'
+
+export default function AuthForm() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+
+  // const supabase = createClient() // 使用预先配置的客户端
+  const supabase = createBrowserClient( // 或者直接创建
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      setError(error.message)
+      console.error("登录错误:", error)
+    } else {
+      // 选项 1: 硬刷新以确保服务器组件更新
+      // router.refresh();
+      // 选项 2: 重定向到受保护的页面 (中间件/服务器组件将处理认证检查)
+      router.push('/protected') // 根据需要调整
+    }
+    setLoading(false)
+  }
+
+  // 类似地添加 handleSignUp, handleSignOut 方法...
+
+  return (
+    <form onSubmit={handleSignIn}>
+      {/* Email, Password 的表单输入 */}
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <div>
+        <label htmlFor="email">邮箱</label>
+        <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      </div>
+      <div>
+        <label htmlFor="password">密码</label>
+        <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      </div>
+      <button type="submit" disabled={loading}>
+        {loading ? '登录中...' : '登录'}
+      </button>
+      {/* 添加注册 / 登出按钮/链接 */}
+    </form>
+  )
+}
+```
+
+## 正确的认证状态监听器 (可选但推荐)
+
+可以在包装布局或应用程序特定部分的客户端组件中实现，以在无需完全重新加载页面的情况下对认证更改做出反应。
+
+```typescript
+// components/AuthProvider.tsx (或类似名称)
+'use client'
+
+import { createBrowserClient } from '@supabase/ssr'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+// import { createClient } from '@/lib/supabase/client' // 使用预配置的客户端
+
+export default function AuthStateListener({ serverAccessToken }: { serverAccessToken?: string }) { // 如果需要初始状态，则传递 token
+  const router = useRouter()
+  // const supabase = createClient()
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('认证事件:', event); // 记录事件用于调试
+      // 可以在这里触发客户端重定向或状态更新
+      // 示例: 登出时刷新数据或重定向
+      if (event === 'SIGNED_OUT') {
+         router.push('/login'); // 或者如果布局处理重定向，则刷新
+      } else if (event === 'SIGNED_IN') {
+         // 可能刷新数据或导航到特定页面
+         router.refresh(); // 刷新服务器组件
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [supabase, router])
+
+  return null // 这个组件本身不渲染任何东西
+}
+```
+
+## 正确的根布局 (`src/app/layout.tsx`)
+
+根布局可以在服务器上获取初始会话。`AuthStateListener` 可以包含在这里用于客户端更新。
+
+```typescript
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import AuthStateListener from '@/components/AuthProvider' // 调整路径
+
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const cookieStore = cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+      },
+    }
+  )
+
+  const { data: { session } } = await supabase.auth.getSession()
+
+  // 如果 AuthStateListener 需要 accessToken 来获取初始状态，则传递它,
+  // 虽然 onAuthStateChange 通常会处理这个问题。
+  // const accessToken = session?.access_token || null
+
+  return (
+    <html lang="en">
+      <body>
+        {/* AuthStateListener 在客户端监听 */}
+        <AuthStateListener />
+        <header>
+          {/* 基于服务器渲染会话的基本导航 */}
+          {session ? (
+            <nav>
+              <span>欢迎 {session.user.email}</span>
+              <a href="/protected">受保护的</a>
+              {/* 登出通常是一个服务器操作或客户端调用 */}
+              <form action="/auth/signout" method="post"> {/* 示例服务器操作 */}
+                <button type="submit">登出</button>
+              </form>
+            </nav>
+          ) : (
+            <nav>
+              <a href="/login">登录</a>
+              <a href="/signup">注册</a>
+            </nav>
+          )}
+        </header>
+        <main>{children}</main>
+      </body>
+    </html>
+  )
+}
+```
+
+## 正确的错误处理
+
+使用 try/catch 块和可能的辅助函数为 Supabase 调用实现健壮的错误处理。
+
+```typescript
+// 在服务器操作或组件中的示例
+try {
+  const { error } = await supabase.auth.signInWithPassword(/* credentials */);
+  if (error) throw error; // 抛出 Supabase 错误
+} catch (error: any) {
+  console.error("认证错误:", error.message);
+  // 根据 error.message 或 error.code 返回用户友好的错误消息
+  // 例如 redirect('/login?error=InvalidCredentials')
+  // 或者在客户端组件中使用状态变量
+}
+```

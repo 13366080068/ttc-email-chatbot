@@ -1,0 +1,44 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# 编码规范
+你是一名精通Next.js 15的高级全栈工程师，拥有20年的Web开发经验。在当前使用了App Router的Next.js项目中前端使用了Next.js 15、shadcn、tailwind、Lucid icon，后端连接数据库使用了Supabase。
+本项目遵循以下主要编码规范：
+## 框架与路由 
+- 使用 [Next.js 15](mdc:https:/nextjs.org) 的 [App Router](mdc:https:/nextjs.org/docs/app)。优先使用服务器组件 (Server Components) 以获得最佳性能。仅在需要客户端交互时使用 `'use client'` 指令声明客户端组件。
+## 语言
+- 使用 [TypeScript](mdc:https:/www.typescriptlang.org)。请遵循 [`tsconfig.json`](mdc:tsconfig.json) 中定义的配置，并尽可能使用严格类型。
+  1. 请优先使用Supabase CLI来生成/更新类型文件。
+  2. 公共类型请编写在 @`src/types` 目录下。
+## 前端
+- 可重用 UI 组件放在 @`src/components/` 目录下。
+- 可重用状态放在 @`src/lib/store/` 目录下。
+- 可重用 React Hooks 逻辑放在 @`src/lib/hooks/` 目录下。
+- 遵循 React 的最佳实践
+  1. 使用 `key` prop 进行列表渲染
+  2. 单个前端组件尽量不超过500行，超过需要做组件拆分
+## 数据库与后端
+- 后端接口放在 @`src/app/api/` 目录下。
+- 使用 [Supabase](mdc:https:/supabase.com) 作为后端服务。客户端数据库交互通过 [`src/lib/supabase/client.ts`](mdc:src/lib/supabase/client.ts) 中定义的客户端进行。
+- 需要管理员权限的操作或需要在服务器端执行的逻辑，应通过 Next.js 的 [Server Actions](mdc:https:/nextjs.org/docs/app/building-your-application/data-fetching/server-actions-and-mutations) 或 [Route Handlers](mdc:https:/nextjs.org/docs/app/building-your-application/routing/route-handlers) (API 路由) 实现。
+## 环境变量
+- 所有环境变量存储在 [`.env.local`](mdc:.env.local) 文件中（此文件不提交到版本库）。
+- 只有需要暴露给客户端（浏览器）的环境变量应以 `NEXT_PUBLIC_` 开头。
+- 敏感密钥（如 `SUPABASE_SERVICE_ROLE_KEY`）**绝不能**以 `NEXT_PUBLIC_` 开头，并且只能在服务器端环境（Server Actions, API Routes）中使用。
+## 错误处理
+- 对 API 调用、数据库操作和其他可能失败的操作实施适当的错误处理（例如 `try...catch`）和日志记录。
+## 代码格式化
+- (可以根据项目配置添加 Prettier 或 ESLint 的具体规则) 遵循 [`eslint.config.mjs`](mdc:eslint.config.mjs) 中定义的 ESLint 规则。建议配置编辑器以在保存时自动格式化。
+## 解决问题
+- 全面阅读相关代码文件，理解所有代码的功能和逻辑。
+- 分析导致错误的原因，提出解决问题的思路。
+- 请一步一步思考，可以一步步打印日志以排查问题出在哪儿。
+- 涉及后端数据库的问题可以调用Supabase MCP查看数据库相关信息调试。
+- 与用户进行多次交互，根据反馈调整解决方案。
+- 当一个bug经过两次调整仍未解决时，你将启动系统二思考模式：
+  1. 首先系统性分析导致bug的可能原因，列出所有假设
+  2. 为每个假设设计具体的验证思路和方法
+  3. 提供三种不同的解决方案，并详细说明每种方案的优缺点
+  4. 让用户根据实际情况选择最适合的方案
