@@ -32,6 +32,7 @@ export default function ChatPage() {
   // 新增：管理邮件卡片显示状态和数据
   const [showEmailCard, setShowEmailCard] = useState(false);
   const [emailArgs, setEmailArgs] = useState<EmailToolArgs | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = useState(false); // 新增：邮件卡片发送状态
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,35 +94,31 @@ export default function ChatPage() {
   // 处理邮件卡片的确认操作
   const handleEmailAccept = async (data: EmailToolArgs) => {
     console.log('尝试保存邮件数据:', data);
-    // 添加 loading 状态？可以在这里加一个 emailCardLoading state
+    setIsSendingEmail(true); // 开始发送，设置 loading 状态
     try {
       const response = await fetch('/api/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data), // 发送邮件数据
+        body: JSON.stringify(data),
       });
 
       if (!response.ok) {
-        // 处理 API 错误
         const errorText = await response.text();
         throw new Error(`Failed to save email: ${response.status} ${errorText}`);
       }
 
-      // 成功保存
       setMessages(prev => [
         ...prev,
         {
           role: 'assistant',
           content: '邮件已发送' // 更新成功消息
-          // 如果实际发送了邮件，可以在这里说"邮件已发送"
         }
       ]);
 
     } catch (error) {
       console.error('Error saving email via API:', error);
-      // 显示错误消息给用户
       setMessages(prev => [
         ...prev,
         {
@@ -130,10 +127,9 @@ export default function ChatPage() {
         }
       ]);
     } finally {
-      // 无论成功失败，都隐藏卡片
       setShowEmailCard(false);
       setEmailArgs(null);
-      // 停止 loading 状态
+      setIsSendingEmail(false); // 请求结束，取消 loading 状态
     }
   };
 
@@ -182,6 +178,7 @@ export default function ChatPage() {
               initialData={emailArgs} 
               onAccept={handleEmailAccept} 
               onCancel={handleEmailCancel} 
+              isLoading={isSendingEmail} // 传递加载状态
             />
           )}
         </CardContent>
