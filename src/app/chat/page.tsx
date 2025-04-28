@@ -1,15 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import EmailCard from '@/components/EmailCard'; // 导入邮件卡片组件
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
 
 // 定义邮件工具调用参数的类型
 interface EmailToolArgs {
@@ -18,27 +13,53 @@ interface EmailToolArgs {
   receiver: string;
 }
 
+// 更新 Message 接口
+interface Message {
+  id: string; // 添加唯一 ID
+  role: 'user' | 'assistant';
+  type: 'text' | 'tool'; // 消息类型
+  content: string; // 用于文本消息
+  toolCallId?: string; // 关联的工具调用 ID (如果 type === 'tool')
+  toolName?: string; // 工具名称 (例如 'sendEmail')
+  toolData?: unknown; // 使用 unknown 代替 any
+}
+
 // 定义 API 返回的 ToolCall 类型 (根据 Vercel AI SDK 简化)
 interface ToolCall {
-  toolCallId: string; // 通常 SDK 会生成 ID
+  toolCallId: string;
   toolName: string;
-  args: unknown; // 使用 unknown 代替 any
+  args: unknown;
 }
 
 export default function ChatPage() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  // 新增：管理邮件卡片显示状态和数据
-  const [showEmailCard, setShowEmailCard] = useState(false);
-  const [emailArgs, setEmailArgs] = useState<EmailToolArgs | null>(null);
-  const [isSendingEmail, setIsSendingEmail] = useState(false); // 新增：邮件卡片发送状态
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null); // 用于引用消息容器 (CardContent) 的 ref
+
+  // 滚动到底部的函数
+  const scrollToBottom = () => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  };
+
+  // 当消息列表变化时，滚动到底部
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]); // 仅依赖 messages
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    const userMessage: Message = { role: 'user', content: input };
+    const userMessage: Message = {
+      id: Date.now().toString() + '-user', // 简单唯一 ID
+      role: 'user',
+      type: 'text',
+      content: input,
+    };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
@@ -56,35 +77,51 @@ export default function ChatPage() {
         throw new Error(`API error: ${response.statusText}`);
       }
 
-      // 定义 API 响应的类型
       const result: { text?: string; toolCalls?: ToolCall[] } = await response.json();
 
-      // 检查是否有工具调用，特别是 sendEmail
+      // 检查是否有工具调用
       if (result.toolCalls && result.toolCalls.length > 0) {
-        const sendEmailCall = result.toolCalls.find(
-          (call): call is ToolCall & { args: EmailToolArgs } => 
-            call.toolName === 'sendEmail'
-        );
-        
-        if (sendEmailCall) {
-          // 解析参数并显示邮件卡片
-          setEmailArgs(sendEmailCall.args as EmailToolArgs);
-          setShowEmailCard(true);
-          // 注意：这里我们不添加任何 assistant 消息，因为 UI 由卡片接管
-        } else if (result.text) {
-          // 如果有其他工具调用或仅有文本
-          const assistantMessage: Message = { role: 'assistant', content: result.text };
-          setMessages(prev => [...prev, assistantMessage]);
+        const toolMessages: Message[] = result.toolCalls.map((call) => ({
+          id: call.toolCallId ?? Date.now().toString() + '-tool-' + call.toolName, // 使用 toolCallId 或生成 ID
+          role: 'assistant',
+          type: 'tool',
+          content: '', // Tool message doesn't have direct text content initially
+          toolCallId: call.toolCallId,
+          toolName: call.toolName,
+          toolData: call.args,
+        }));
+        setMessages(prev => [...prev, ...toolMessages]);
+
+        // 如果除了 tool call 还有文本回复，也添加它
+        if (result.text) {
+          const assistantTextMessage: Message = {
+            id: Date.now().toString() + '-text',
+            role: 'assistant',
+            type: 'text',
+            content: result.text,
+          };
+          setMessages(prev => [...prev, assistantTextMessage]);
         }
+
       } else if (result.text) {
         // 仅有文本回复
-        const assistantMessage: Message = { role: 'assistant', content: result.text };
+        const assistantMessage: Message = {
+          id: Date.now().toString() + '-text',
+          role: 'assistant',
+          type: 'text',
+          content: result.text,
+        };
         setMessages(prev => [...prev, assistantMessage]);
       }
 
     } catch (error) {
       console.error('Failed to fetch chat response:', error);
-      const errorMessage: Message = { role: 'assistant', content: '抱歉，无法获取回复。' };
+      const errorMessage: Message = {
+        id: Date.now().toString() + '-error',
+        role: 'assistant',
+        type: 'text',
+        content: `抱歉，无法获取回复: ${error instanceof Error ? error.message : '未知错误'}`
+      };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
@@ -92,9 +129,9 @@ export default function ChatPage() {
   };
 
   // 处理邮件卡片的确认操作
-  const handleEmailAccept = async (data: EmailToolArgs) => {
-    console.log('尝试保存邮件数据:', data);
-    setIsSendingEmail(true); // 开始发送，设置 loading 状态
+  const handleEmailAccept = async (messageId: string, data: EmailToolArgs) => {
+    console.log(`尝试保存邮件数据 (来自消息 ID: ${messageId}):`, data);
+    setIsSendingEmail(true);
     try {
       const response = await fetch('/api/emails', {
         method: 'POST',
@@ -109,42 +146,39 @@ export default function ChatPage() {
         throw new Error(`Failed to save email: ${response.status} ${errorText}`);
       }
 
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: '邮件已发送' // 更新成功消息
-        }
-      ]);
+      // 更新消息：将工具消息替换为确认文本消息
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+        ? { ...msg, type: 'text', content: '邮件已发送' } 
+        : msg
+      ));
 
     } catch (error) {
       console.error('Error saving email via API:', error);
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: `保存邮件时出错：${error instanceof Error ? error.message : '未知错误'}`
-        }
-      ]);
+      // 更新消息：将工具消息替换为错误文本消息
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+        ? { 
+            ...msg, 
+            type: 'text', 
+            content: `保存邮件时出错：${error instanceof Error ? error.message : '未知错误'}` 
+          } 
+        : msg
+      ));
     } finally {
-      setShowEmailCard(false);
-      setEmailArgs(null);
-      setIsSendingEmail(false); // 请求结束，取消 loading 状态
+      setIsSendingEmail(false);
     }
   };
 
   // 处理邮件卡片的取消操作
-  const handleEmailCancel = () => {
-    console.log('邮件发送已取消');
-    setMessages(prev => [
-      ...prev,
-      {
-        role: 'assistant',
-        content: '邮件发送已取消。'
-      }
-    ]);
-    setShowEmailCard(false); // 隐藏卡片
-    setEmailArgs(null);
+  const handleEmailCancel = (messageId: string) => {
+    console.log(`邮件发送已取消 (来自消息 ID: ${messageId})`);
+    // 更新消息：将工具消息替换为取消文本消息
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId 
+      ? { ...msg, type: 'text', content: '邮件发送已取消。' } 
+      : msg
+    ));
   };
 
   return (
@@ -153,52 +187,54 @@ export default function ChatPage() {
         <CardHeader>
           <CardTitle>邮件助手聊天机器人</CardTitle>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto space-y-4 pr-6">
-          {messages.map((msg, index) => (
-            <div key={`msg-${index}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`p-3 rounded-lg max-w-[75%] ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                  }`}
-              >
-                {msg.content}
-              </div>
+        <CardContent ref={messagesContainerRef} className="flex-1 overflow-y-auto space-y-4 pr-6">
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {/* 根据消息类型渲染 */} 
+              {msg.type === 'text' ? (
+                <div
+                  className={`p-3 rounded-lg max-w-[75%] ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                    }`}
+                >
+                  {msg.content}
+                </div>
+              ) : msg.type === 'tool' && msg.toolName === 'sendEmail' ? (
+                // 渲染 EmailCard，传递必要的回调和数据
+                <EmailCard 
+                  initialData={msg.toolData as EmailToolArgs} // 需要类型断言
+                  onAccept={(data) => handleEmailAccept(msg.id, data)} // 传递消息 ID
+                  onCancel={() => handleEmailCancel(msg.id)} // 传递消息 ID
+                  isLoading={isSendingEmail} // 传递加载状态
+                />
+              ) : (
+                // 可以为其他工具类型或未知类型添加占位符
+                <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
+                  不支持的工具类型或消息
+                </div>
+              )}
             </div>
           ))}
-          {isLoading && !showEmailCard && ( // 仅在非邮件卡片加载时显示
-             <div className="flex justify-start">
-               <div className="p-3 rounded-lg bg-muted animate-pulse">
-                 正在思考中...
-               </div>
+          {isLoading && ( // 加载指示器
+            <div className="flex justify-start">
+              <div className="p-3 rounded-lg bg-muted animate-pulse">
+                正在思考中...
+              </div>
             </div>
-          )}
-          {/* 条件渲染邮件卡片 */} 
-          {showEmailCard && emailArgs && (
-            <EmailCard 
-              key="email-card" // 添加 key 确保 state 正确重置
-              initialData={emailArgs} 
-              onAccept={handleEmailAccept} 
-              onCancel={handleEmailCancel} 
-              isLoading={isSendingEmail} // 传递加载状态
-            />
           )}
         </CardContent>
         <CardFooter className="mt-auto border-t pt-4">
-          {/* 只有在不显示邮件卡片时才显示聊天输入框 */} 
-          {!showEmailCard && (
-            <form onSubmit={handleSubmit} className="flex w-full space-x-2">
-              <Input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="输入你的消息..."
-                disabled={isLoading}
-                className="flex-1"
-              />
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? '发送中...' : '发送'}
-              </Button>
-            </form>
-          )}
+          <form onSubmit={handleSubmit} className="flex w-full space-x-2">
+            <Input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="输入你的消息..."
+              className="flex-1"
+            />
+            <Button type="submit" disabled={isLoading || isSendingEmail}>
+              {isLoading ? '获取回复...' : '发送'}
+            </Button>
+          </form>
         </CardFooter>
       </Card>
     </div>
