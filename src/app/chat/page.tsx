@@ -91,18 +91,50 @@ export default function ChatPage() {
   };
 
   // 处理邮件卡片的确认操作
-  const handleEmailAccept = (data: EmailToolArgs) => {
-    console.log('模拟发送邮件:', data); // 这里仅打印日志，实际可调用 API
-    // 可以选择在这里添加一条确认消息到聊天记录中
-    setMessages(prev => [
-      ...prev,
-      {
-        role: 'assistant',
-        content: `好的，邮件已发送给 ${data.receiver}，标题为: ${data.title}`
+  const handleEmailAccept = async (data: EmailToolArgs) => {
+    console.log('尝试保存邮件数据:', data);
+    // 添加 loading 状态？可以在这里加一个 emailCardLoading state
+    try {
+      const response = await fetch('/api/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data), // 发送邮件数据
+      });
+
+      if (!response.ok) {
+        // 处理 API 错误
+        const errorText = await response.text();
+        throw new Error(`Failed to save email: ${response.status} ${errorText}`);
       }
-    ]);
-    setShowEmailCard(false); // 隐藏卡片
-    setEmailArgs(null);
+
+      // 成功保存
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: '邮件已发送' // 更新成功消息
+          // 如果实际发送了邮件，可以在这里说"邮件已发送"
+        }
+      ]);
+
+    } catch (error) {
+      console.error('Error saving email via API:', error);
+      // 显示错误消息给用户
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `保存邮件时出错：${error instanceof Error ? error.message : '未知错误'}`
+        }
+      ]);
+    } finally {
+      // 无论成功失败，都隐藏卡片
+      setShowEmailCard(false);
+      setEmailArgs(null);
+      // 停止 loading 状态
+    }
   };
 
   // 处理邮件卡片的取消操作
