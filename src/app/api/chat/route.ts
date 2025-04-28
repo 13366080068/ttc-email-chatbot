@@ -1,4 +1,4 @@
-import { generateText } from 'ai';
+import { generateText, CoreMessage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 
@@ -28,25 +28,26 @@ const sendEmailSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const { prompt }: { prompt: string } = await req.json();
+    // 修改：接收完整的消息历史
+    const { messages }: { messages: CoreMessage[] } = await req.json();
 
-    // 使用自定义配置的客户端实例调用 generateText，并提供工具定义
+    // (可选) 校验 messages 数组是否有效
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return new Response('Invalid request body: messages array is required.', { status: 400 });
+    }
+
+    // 使用消息历史调用 generateText
     const { text, toolCalls } = await generateText({
       model: openai('gpt-4o'),
-      system: '你是一个乐于助人的 AI 助手。你可以使用提供的工具来发送邮件。',
-      prompt,
-      // 修正 tools 对象的结构
+      system: '你是一个乐于助人的 AI 助手。你可以使用提供的工具来发送邮件。请在收集齐发送邮件所需的所有信息（接收者、标题、正文）后再调用 sendEmail 工具。',
+      messages: messages, // 传递完整的消息历史
       tools: {
         sendEmail: {
           description: '发送一封邮件给指定的接收者。',
           parameters: sendEmailSchema,
-          execute: async (response) => {
-            console.log('response:', response)
-          },
-          // 注意：这里不定义 execute，因为我们希望在前端处理
         }
       },
-      toolChoice: 'auto', // 让模型自动选择是否调用工具
+      toolChoice: 'auto',
     });
 
     // 返回生成的文本和可能的工具调用信息

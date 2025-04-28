@@ -68,10 +68,12 @@ export default function EmailCard({ initialData, onAccept, onCancel, isLoading }
           />
         </div>
       </CardContent>
-      <CardFooter className="flex justify-end space-x-2">
-        <Button variant="outline" onClick={onCancel} disabled={isLoading}>取消</Button>
+      <CardFooter className="flex justify-end space-x-2 border-t pt-4 mt-4">
+        <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+          取消发送
+        </Button>
         <Button onClick={handleAccept} disabled={isLoading}>
-          {isLoading ? '发送中...' : '确认发送'}
+          {isLoading ? '处理中...' : '确认并发送'} 
         </Button>
       </CardFooter>
     </Card>
