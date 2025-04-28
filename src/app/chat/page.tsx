@@ -96,14 +96,6 @@ export default function ChatPage() {
     }
   };
 
-  // 统一使用立即滚动版本
-  const scrollToBottom = scrollToBottomImmediate;
-
-  // 当消息列表变化时，滚动到底部
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]); // 仅依赖 messages
-
   // 保存到 localStorage useEffect (依赖 allMessagesRef.current 的变化，需要更可靠的触发)
   // 简单的替代方法是在每次修改 ref 后手动调用保存
   const saveMessagesToLocalStorage = () => {
@@ -141,6 +133,11 @@ export default function ChatPage() {
     const updatedMessagesWithUser = [...messages, userMessage];
     setMessages(updatedMessagesWithUser);
     setInput('');
+
+    // 在这里立即滚动到底部
+    // 使用 setTimeout 确保状态更新引起的 DOM 变化有机会渲染
+    setTimeout(scrollToBottomImmediate, 0);
+
     setIsLoading(true);
     saveMessagesToLocalStorage(); // 保存用户消息
     
