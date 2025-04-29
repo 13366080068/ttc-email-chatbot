@@ -5,6 +5,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import EmailCard from '@/components/EmailCard'; // 导入邮件卡片组件
+import { Trash2 } from 'lucide-react'; // 导入 Trash2 图标
+// 导入 Tooltip 组件
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 // 定义邮件工具调用参数的类型
 interface EmailToolArgs {
@@ -318,73 +326,116 @@ export default function ChatPage() {
 
   }, [isLoadingMore, allHistoryLoaded, loadMoreMessages]); // 依赖项确保函数引用最新
 
+  // 新增：清除聊天记录的处理函数
+  const handleClearChat = () => {
+    // 添加确认提示，防止误操作
+    if (window.confirm("确定要清除所有聊天记录吗？此操作不可恢复。")) {
+      setMessages([]); // 清空当前显示的消息
+      allMessagesRef.current = []; // 清空所有历史消息的 Ref
+      setVisibleMessagesCount(MESSAGES_PER_PAGE); // 重置可见消息计数 (可以保持，或设为 0)
+      setAllHistoryLoaded(true); // <--- 修复：清除后所有历史都已加载（即没有历史）
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('chatMessages'); // 从 localStorage 移除记录
+      }
+      console.log("聊天记录已清除。");
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4">
-      <Card className="w-full max-w-2xl flex flex-col h-[calc(100vh-2rem)]">
-        <CardHeader>
-          <CardTitle>邮件助手聊天机器人</CardTitle>
-        </CardHeader>
-        <CardContent ref={messagesContainerRef} className="flex-1 overflow-y-auto space-y-4 pr-6">
-          {/* 加载更多提示 - 移动到消息列表前 */} 
-          {!allHistoryLoaded && (
-            <div className="text-center text-muted-foreground text-xs py-4"> {/* 移除 sticky 相关类，调整 padding */} 
-              {isLoadingMore ? '加载中...' : '上划加载历史消息'}
-            </div>
-          )}
-          {messages.map((msg) => (
-            <div key={msg.id} data-message-id={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {/* 根据消息类型渲染 */} 
-              {msg.type === 'text' ? (
-                <div
-                  className={`p-3 rounded-lg max-w-[75%] ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                    }`}
+    <TooltipProvider> {/* 在外层包裹 TooltipProvider */} 
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <Card className="w-full max-w-2xl flex flex-col h-[calc(100vh-2rem)]">
+          <CardHeader className="flex flex-row items-center justify-between"> {/* 使用 flex 布局 */} 
+            <CardTitle>邮件助手聊天机器人</CardTitle>
+            {/* 使用 Tooltip 包裹按钮 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleClearChat}
+                  // 移除 title 属性
+                  disabled={isLoading || isSendingEmail || messages.length === 0}
                 >
-                  {msg.content}
-                </div>
-              ) : msg.type === 'tool' && msg.toolName === 'sendEmail' && msg.toolData ? (
-                // Email Card 渲染 (移除 onSubmitFeedback prop)
-                <EmailCard 
-                  initialData={msg.toolData as EmailToolArgs} 
-                  onAccept={(data) => handleEmailAccept(msg.id, data)} 
-                  onCancel={() => handleEmailCancel(msg.id)} 
-                  isLoading={isSendingEmail} // 只需传递 isSendingEmail
-                />
-              ) : msg.type === 'tool' && msg.toolName === 'sendEmail' && !msg.toolData ? (
-                <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
-                  无效的邮件工具数据
-                </div>
-              ) : (
-                // 可以为其他工具类型或未知类型添加占位符
-                <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
-                  不支持的工具类型或消息
-                </div>
-              )}
-            </div>
-          ))}
-          {isLoading && ( // 主加载指示器
-            <div className="flex justify-start">
-              <div className="p-3 rounded-lg bg-muted animate-pulse">
-                正在思考中...
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>清除聊天记录</p>
+              </TooltipContent>
+            </Tooltip>
+          </CardHeader>
+          <CardContent ref={messagesContainerRef} className="flex-1 overflow-y-auto space-y-4 pr-6">
+            {/* 加载更多提示 - 移动到消息列表前 */} 
+            {!allHistoryLoaded && (
+              <div className="text-center text-muted-foreground text-xs py-4"> {/* 移除 sticky 相关类，调整 padding */} 
+                {isLoadingMore ? '加载中...' : '上划加载历史消息'}
               </div>
-            </div>
-          )}
-        </CardContent>
-        <CardFooter className="mt-auto border-t pt-4">
-          <form onSubmit={handleSubmit} className="flex w-full space-x-2">
-            <Input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="输入你的消息..."
-              className="flex-1"
-              disabled={isLoading || isSendingEmail}
-            />
-            <Button type="submit" disabled={isLoading || isSendingEmail}> 
-              {isLoading || isSendingEmail ? '处理中...' : '发送'}
-            </Button>
-          </form>
-        </CardFooter>
-      </Card>
-    </div>
+            )}
+            {messages.map((msg, index) => {
+              // 确定当前 EmailCard 是否已被后续助手消息取代
+              const isSuperseded = 
+                msg.type === 'tool' && 
+                msg.toolName === 'sendEmail' && 
+                messages.slice(index + 1).some(laterMsg => laterMsg.role === 'assistant');
+
+              return (
+                <div key={msg.id} data-message-id={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {/* 根据消息类型渲染 */} 
+                  {msg.type === 'text' ? (
+                    <div
+                      className={`p-3 rounded-lg max-w-[75%] ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        }`}
+                    >
+                      {msg.content}
+                    </div>
+                  ) : msg.type === 'tool' && msg.toolName === 'sendEmail' && msg.toolData ? (
+                    // Email Card 渲染，传递 isSuperseded prop
+                    <EmailCard 
+                      initialData={msg.toolData as EmailToolArgs} 
+                      onAccept={(data) => handleEmailAccept(msg.id, data)} 
+                      onCancel={() => handleEmailCancel(msg.id)} 
+                      isLoading={isSendingEmail} 
+                      isSuperseded={isSuperseded} // 传递计算出的状态
+                    />
+                  ) : msg.type === 'tool' && msg.toolName === 'sendEmail' && !msg.toolData ? (
+                    <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
+                      无效的邮件工具数据
+                    </div>
+                  ) : (
+                    // 可以为其他工具类型或未知类型添加占位符
+                    <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
+                      不支持的工具类型或消息
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {isLoading && ( // 主加载指示器
+              <div className="flex justify-start">
+                <div className="p-3 rounded-lg bg-muted animate-pulse">
+                  正在思考中...
+                </div>
+              </div>
+            )}
+          </CardContent>
+          <CardFooter className="mt-auto border-t pt-4">
+            <form onSubmit={handleSubmit} className="flex w-full space-x-2">
+              <Input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="输入你的消息..."
+                className="flex-1"
+                disabled={isLoading || isSendingEmail}
+              />
+              <Button type="submit" disabled={isLoading || isSendingEmail}> 
+                {isLoading || isSendingEmail ? '处理中...' : '发送'}
+              </Button>
+            </form>
+          </CardFooter>
+        </Card>
+      </div>
+    </TooltipProvider>
   );
 } 
