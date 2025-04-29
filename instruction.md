@@ -1,7 +1,8 @@
 # 项目概览
-在当前使用了App Router的Next.js项目中前端使用了Next.js 15、shadcn、tailwind、Lucid icon，后端连接数据库使用了Supabase。
+这是一个用vercel AI SDK实现的智能对话机器人。在当前使用了App Router的Next.js项目中前端使用了Next.js 15、shadcn、tailwind、Lucid icon，后端连接数据库使用了Supabase。
 
 # 目标
+实现一个界面美观、交互良好的支持通过call tools加前端定制卡片来发邮件的智能对话机器人。
 
 # 数据库设计
 ## 数据表结构
@@ -23,3 +24,14 @@
 # 后端API接口
 
 # 核心功能(PRD)
+
+## 1. call tools
+### 1.1 通过mock发邮件的函数跟call tools SDK以及前端定制tool卡片实现了发邮件的功能
+### 1.2 tool卡片会根据用户的二次input输入返回新卡片，并且disable掉旧卡片以做区分
+
+## 2. 历史消息
+### 2.1 存在localStorage中，首次默认只加载10条，上划会加载历史消息
+### 2.2 右上角增加clear按钮功能清空聊天记录
+
+## 3. 多轮对话
+### 3.1 每次对话会传递前5轮对话历史
