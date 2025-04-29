@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { type CoreMessage } from 'ai'; // 导入 CoreMessage
 
 // 定义邮件工具调用参数的类型
 interface EmailToolArgs {
@@ -54,9 +55,10 @@ interface ToolCall {
   args: unknown;
 }
 
-const CONTEXT_WINDOW_SIZE = 5; // 定义发送给 API 的历史消息数量
 const MESSAGES_PER_PAGE = 10; // 每次加载的消息数量
 const SIMULATED_STREAM_DELAY = 50; // Milliseconds between text chunks
+const TOKEN_LIMIT = 120000; // 安全 token 上限
+const SYSTEM_PROMPT = '你是一个乐于助人的 AI 助手。你可以使用提供的工具来发送邮件。请在收集齐发送邮件所需的所有信息（接收者、标题、正文）后再调用 sendEmail 工具。';
 
 export default function ChatPage() {
   const [input, setInput] = useState('');
@@ -218,20 +220,49 @@ export default function ChatPage() {
     setMessages(updatedMessagesWithUser);
     setInput('');
     setTimeout(scrollToBottomImmediate, 0);
-    setIsLoading(true); // Set loading true here
-    saveMessagesToLocalStorage(); 
-    
-    const messagesForApi = allMessagesRef.current.slice(-CONTEXT_WINDOW_SIZE).map(msg => ({
-        role: msg.role,
-        content: msg.content, 
-        // Send tool calls/results if backend expects them for context
-        // (generateText might not use them directly, but future models could)
-        // tool_calls: msg.toolCalls, 
-        // tool_call_id: msg.toolCallId,
-        // name: msg.toolName
-    }));
+    setIsLoading(true);
+    saveMessagesToLocalStorage();
+
+    // --- Token Calculation Logic (using dynamic import) ---
+    let messagesForApi: CoreMessage[] = [];
+    try {
+      // 动态导入 tiktoken
+      const { get_encoding } = await import("@dqbd/tiktoken");
+      const encoding = get_encoding("cl100k_base"); 
+      let currentTokens = encoding.encode(SYSTEM_PROMPT).length;
+      const latestMessages = [...allMessagesRef.current];
+      for (let i = latestMessages.length - 1; i >= 0; i--) {
+        const msg = latestMessages[i];
+        let messageStringToTokenize = `role: ${msg.role}\ncontent: ${msg.content}\n`;
+        if (msg.type === 'tool' && msg.toolName && msg.toolData) {
+             messageStringToTokenize += `tool_name: ${msg.toolName}\ntool_data: ${JSON.stringify(msg.toolData)}\n`;
+        } else if (msg.type === 'tool' && msg.toolCallId) {
+             messageStringToTokenize += `tool_call_id: ${msg.toolCallId}\n`;
+        }
+        const messageTokens = encoding.encode(messageStringToTokenize).length;
+        if (currentTokens + messageTokens <= TOKEN_LIMIT) {
+          currentTokens += messageTokens;
+          messagesForApi.unshift({ role: msg.role, content: msg.content });
+        } else {
+          break; 
+        }
+      }
+      encoding.free(); 
+      console.log(`[Token Calculation] Sending ${messagesForApi.length} messages, approx. ${currentTokens} tokens.`);
+    } catch (e) {
+        console.error("Token calculation failed, sending last 5 messages as fallback:", e);
+        messagesForApi = allMessagesRef.current.slice(-5).map(msg => ({ role: msg.role, content: msg.content }));
+    }
+    // --- End Token Calculation ---
 
     try {
+      // Ensure messagesForApi has at least the user's last message if calculation failed badly
+      if (messagesForApi.length === 0 && allMessagesRef.current.length > 0) {
+         console.warn("Token calculation resulted in zero messages, sending only the last user message.");
+         const lastUserMsg = allMessagesRef.current[allMessagesRef.current.length - 1];
+         messagesForApi = [{ role: lastUserMsg.role, content: lastUserMsg.content }];
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -253,7 +284,7 @@ export default function ChatPage() {
           id: call.toolCallId ?? Date.now().toString() + '-tool-' + call.toolName,
           role: 'assistant',
           type: 'tool',
-          content: '', // Tool messages have no initial text content
+          content: '', 
           toolCallId: call.toolCallId,
           toolName: call.toolName,
           toolData: call.args,
@@ -266,7 +297,7 @@ export default function ChatPage() {
            id: Date.now().toString() + '-text',
            role: 'assistant',
            type: 'text',
-           content: result.text, // Pass the full text here
+           content: result.text, 
          };
          newAssistantMessages.push(assistantTextMessage);
       }
@@ -275,7 +306,7 @@ export default function ChatPage() {
           handleApiResponse(newAssistantMessages); 
       } else {
           console.warn("API returned no text or tool calls.");
-          setIsLoading(false); // If API returns nothing, stop loading
+          setIsLoading(false); 
       }
 
     } catch (error) {
@@ -286,8 +317,9 @@ export default function ChatPage() {
         type: 'text',
         content: `抱歉，处理请求时出错: ${error instanceof Error ? error.message : '未知错误'}`
       };
-      handleApiResponse([errorMessage]); // Display error (handleApiResponse will call setIsLoading(false))
-    }
+      handleApiResponse([errorMessage]); 
+    } 
+    // isLoading is set to false inside handleApiResponse when streaming finishes
   };
 
   // 处理邮件卡片的确认操作
