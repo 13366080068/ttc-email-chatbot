@@ -290,16 +290,14 @@ export default function ChatPage() {
           toolData: call.args,
         }));
         newAssistantMessages.push(...toolMessages);
-      }
-      
-      if (result.text) {
-         const assistantTextMessage: Message = {
-           id: Date.now().toString() + '-text',
-           role: 'assistant',
-           type: 'text',
-           content: result.text, 
-         };
-         newAssistantMessages.push(assistantTextMessage);
+      } else if (result.text) {
+        const assistantTextMessage: Message = {
+          id: Date.now().toString() + '-text',
+          role: 'assistant',
+          type: 'text',
+          content: result.text, 
+        };
+        newAssistantMessages.push(assistantTextMessage);
       }
 
       if (newAssistantMessages.length > 0) {
