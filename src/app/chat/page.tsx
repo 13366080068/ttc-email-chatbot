@@ -13,6 +13,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+// 导入 AlertDialog 组件
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 // 定义邮件工具调用参数的类型
 interface EmailToolArgs {
@@ -326,44 +338,59 @@ export default function ChatPage() {
 
   }, [isLoadingMore, allHistoryLoaded, loadMoreMessages]); // 依赖项确保函数引用最新
 
-  // 新增：清除聊天记录的处理函数
-  const handleClearChat = () => {
-    // 添加确认提示，防止误操作
-    if (window.confirm("确定要清除所有聊天记录吗？此操作不可恢复。")) {
-      setMessages([]); // 清空当前显示的消息
-      allMessagesRef.current = []; // 清空所有历史消息的 Ref
-      setVisibleMessagesCount(MESSAGES_PER_PAGE); // 重置可见消息计数 (可以保持，或设为 0)
-      setAllHistoryLoaded(true); // <--- 修复：清除后所有历史都已加载（即没有历史）
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('chatMessages'); // 从 localStorage 移除记录
-      }
-      console.log("聊天记录已清除。");
+  // 修改：这是实际执行清除操作的函数
+  const executeClearChat = () => {
+    setMessages([]); // 清空当前显示的消息
+    allMessagesRef.current = []; // 清空所有历史消息的 Ref
+    setVisibleMessagesCount(MESSAGES_PER_PAGE); // 重置可见消息计数
+    setAllHistoryLoaded(true); // 清除后所有历史都已加载
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('chatMessages'); // 从 localStorage 移除记录
     }
+    console.log("聊天记录已清除。");
   };
 
   return (
-    <TooltipProvider> {/* 在外层包裹 TooltipProvider */} 
+    <TooltipProvider> 
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <Card className="w-full max-w-2xl flex flex-col h-[calc(100vh-2rem)]">
-          <CardHeader className="flex flex-row items-center justify-between"> {/* 使用 flex 布局 */} 
+          <CardHeader className="flex flex-row items-center justify-between"> 
             <CardTitle>邮件助手聊天机器人</CardTitle>
-            {/* 使用 Tooltip 包裹按钮 */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={handleClearChat}
-                  // 移除 title 属性
-                  disabled={isLoading || isSendingEmail || messages.length === 0}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>清除聊天记录</p>
-              </TooltipContent>
-            </Tooltip>
+            {/* 使用 AlertDialog 替换 Tooltip 包裹 (Tooltip 可以放在 Trigger 内部) */}
+            <AlertDialog>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {/* 这个按钮现在是 AlertDialog 的触发器 */}
+                  <AlertDialogTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      // onClick 不再需要，由 Trigger 处理
+                      disabled={isLoading || isSendingEmail || messages.length === 0}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>清除聊天记录</p>
+                </TooltipContent>
+              </Tooltip>
+              {/* AlertDialog 的内容 */}
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>确认清除？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    确定要清除所有聊天记录吗？此操作不可恢复。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  {/* 点击确认按钮时调用 executeClearChat */}
+                  <AlertDialogAction onClick={executeClearChat}>确认清除</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardHeader>
           <CardContent ref={messagesContainerRef} className="flex-1 overflow-y-auto space-y-4 pr-6">
             {/* 加载更多提示 - 移动到消息列表前 */} 
