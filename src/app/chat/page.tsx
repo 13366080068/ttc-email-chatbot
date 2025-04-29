@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,6 +56,7 @@ interface ToolCall {
 
 const CONTEXT_WINDOW_SIZE = 5; // 定义发送给 API 的历史消息数量
 const MESSAGES_PER_PAGE = 10; // 每次加载的消息数量
+const SIMULATED_STREAM_DELAY = 50; // Milliseconds between text chunks
 
 export default function ChatPage() {
   const [input, setInput] = useState('');
@@ -69,6 +70,7 @@ export default function ChatPage() {
   const [visibleMessagesCount, setVisibleMessagesCount] = useState(MESSAGES_PER_PAGE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [allHistoryLoaded, setAllHistoryLoaded] = useState(false);
+  const activeStreamingIntervals = useRef(0); // Ref to track active streams
 
   // 新增：useEffect 用于在客户端加载 localStorage 中的消息
   useEffect(() => {
@@ -126,18 +128,79 @@ export default function ChatPage() {
     }
   };
 
-  // 处理 API 响应并更新状态的辅助函数
-  const handleApiResponse = (newAssistantMessages: Message[]) => {
-      // 更新 Ref (完整历史)
-      allMessagesRef.current = [...allMessagesRef.current, ...newAssistantMessages];
-      // 更新 State (追加显示的)
-      setMessages(prev => [...prev, ...newAssistantMessages]);
-      // 保存到 localStorage
-      saveMessagesToLocalStorage();
-      // 滚动到底部
-      setTimeout(scrollToBottomImmediate, 0);
-  };
+  // --- Modified handleApiResponse for simulated streaming ---
+  const handleApiResponse = useCallback((assistantResponses: Message[]) => {
+    const textMessages = assistantResponses.filter(msg => msg.type === 'text' && msg.content);
+    const toolMessages = assistantResponses.filter(msg => msg.type === 'tool');
 
+    // Reset counter at the beginning of handling a new response batch
+    activeStreamingIntervals.current = textMessages.length;
+
+    // 1. Handle tool messages immediately
+    if (toolMessages.length > 0) {
+      allMessagesRef.current = [...allMessagesRef.current, ...toolMessages];
+      setMessages(prev => [...prev, ...toolMessages]);
+      // Save immediately after adding tool messages
+      saveMessagesToLocalStorage(); 
+       // Scroll after adding tool messages
+      setTimeout(scrollToBottomImmediate, 0); 
+    }
+
+    // If there are no text messages to stream, and only tool messages were handled,
+    // set loading to false now.
+    if (textMessages.length === 0 && toolMessages.length > 0) {
+        setIsLoading(false);
+    }
+    // If there are no messages at all (empty response), also set loading false.
+    if (textMessages.length === 0 && toolMessages.length === 0) {
+        setIsLoading(false);
+    }
+
+    // 2. Handle text messages with simulated streaming
+    textMessages.forEach((textMsg) => {
+      const fullText = textMsg.content;
+      const messageId = textMsg.id; 
+      
+      const initialMessage: Message = { ...textMsg, content: '' };
+      allMessagesRef.current = [...allMessagesRef.current, initialMessage];
+      setMessages(prev => [...prev, initialMessage]);
+
+      setTimeout(scrollToBottomImmediate, 0);
+
+      let charIndex = 0;
+      const intervalId = setInterval(() => {
+        if (charIndex < fullText.length) {
+          const nextChunk = fullText.substring(charIndex, charIndex + 2); // Stream 2 chars at a time
+          charIndex += 2;
+          setMessages(prev =>
+            prev.map(m => 
+              m.id === messageId ? { ...m, content: m.content + nextChunk } : m
+            )
+          );
+          // Also update the ref during streaming (important for context window)
+          const refMsgIndex = allMessagesRef.current.findIndex(m => m.id === messageId);
+          if (refMsgIndex !== -1) {
+              allMessagesRef.current[refMsgIndex].content += nextChunk;
+          }
+           // Scroll during streaming to keep up
+          scrollToBottomImmediate(); 
+        } else {
+          clearInterval(intervalId);
+          // Decrement counter when a stream finishes
+          activeStreamingIntervals.current -= 1;
+          // Save after this specific stream finishes
+          saveMessagesToLocalStorage(); 
+          // Only set loading false when ALL streams for this batch are done
+          if (activeStreamingIntervals.current === 0) {
+            setIsLoading(false);
+          }
+        }
+      }, SIMULATED_STREAM_DELAY);
+    });
+
+  }, []); // Keep dependency array empty if setIsLoading is stable (from useState)
+
+  // --- handleSubmit remains largely the same, calls handleApiResponse ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const currentInput = input;
@@ -150,26 +213,22 @@ export default function ChatPage() {
       content: currentInput,
     };
     
-    // 更新 Ref 和 State
     allMessagesRef.current = [...allMessagesRef.current, userMessage];
     const updatedMessagesWithUser = [...messages, userMessage];
     setMessages(updatedMessagesWithUser);
     setInput('');
-
-    // 在这里立即滚动到底部
-    // 使用 setTimeout 确保状态更新引起的 DOM 变化有机会渲染
     setTimeout(scrollToBottomImmediate, 0);
-
-    setIsLoading(true);
-    saveMessagesToLocalStorage(); // 保存用户消息
+    setIsLoading(true); // Set loading true here
+    saveMessagesToLocalStorage(); 
     
-    // 构造要发送到 API 的消息历史 (最近 N 条 + 当前输入)
-    const messagesForApi = updatedMessagesWithUser.slice(-CONTEXT_WINDOW_SIZE).map(msg => ({
+    const messagesForApi = allMessagesRef.current.slice(-CONTEXT_WINDOW_SIZE).map(msg => ({
         role: msg.role,
-        content: msg.content,
-        // 如果需要传递 tool_calls 和 tool_results 以实现更复杂的工具交互，
-        // Vercel AI SDK 的 CoreMessage 支持这些字段，但 generateText 可能需要特定处理
-        // 对于当前场景（仅发送历史和新提示）， role 和 content 通常足够
+        content: msg.content, 
+        // Send tool calls/results if backend expects them for context
+        // (generateText might not use them directly, but future models could)
+        // tool_calls: msg.toolCalls, 
+        // tool_call_id: msg.toolCallId,
+        // name: msg.toolName
     }));
 
     try {
@@ -178,7 +237,6 @@ export default function ChatPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        // 修改：发送 messages 数组
         body: JSON.stringify({ messages: messagesForApi }), 
       });
 
@@ -188,36 +246,37 @@ export default function ChatPage() {
       }
 
       const result: { text?: string; toolCalls?: ToolCall[] } = await response.json();
-      const newAssistantMessages: Message[] = []; // 注意这里变量名改了下
+      const newAssistantMessages: Message[] = [];
 
-      // 检查是否有工具调用
       if (result.toolCalls && result.toolCalls.length > 0) {
         const toolMessages: Message[] = result.toolCalls.map((call) => ({
           id: call.toolCallId ?? Date.now().toString() + '-tool-' + call.toolName,
           role: 'assistant',
           type: 'tool',
-          content: '',
+          content: '', // Tool messages have no initial text content
           toolCallId: call.toolCallId,
           toolName: call.toolName,
           toolData: call.args,
-          // 不再需要在消息中保存 originalPrompt，因为历史已发送
-          // originalPrompt: isFeedbackForTool ? promptForApi : currentInput,
         }));
         newAssistantMessages.push(...toolMessages);
       }
       
-      // 如果有文本回复
       if (result.text) {
          const assistantTextMessage: Message = {
            id: Date.now().toString() + '-text',
            role: 'assistant',
            type: 'text',
-           content: result.text,
+           content: result.text, // Pass the full text here
          };
          newAssistantMessages.push(assistantTextMessage);
       }
 
-      handleApiResponse(newAssistantMessages); // 调用辅助函数处理结果
+      if (newAssistantMessages.length > 0) {
+          handleApiResponse(newAssistantMessages); 
+      } else {
+          console.warn("API returned no text or tool calls.");
+          setIsLoading(false); // If API returns nothing, stop loading
+      }
 
     } catch (error) {
       console.error('Failed to fetch chat response:', error);
@@ -227,9 +286,7 @@ export default function ChatPage() {
         type: 'text',
         content: `抱歉，处理请求时出错: ${error instanceof Error ? error.message : '未知错误'}`
       };
-      handleApiResponse([errorMessage]); // 调用辅助函数处理错误
-    } finally {
-      setIsLoading(false);
+      handleApiResponse([errorMessage]); // Display error (handleApiResponse will call setIsLoading(false))
     }
   };
 
@@ -464,10 +521,20 @@ export default function ChatPage() {
                 </div>
               );
             })}
-            {isLoading && ( // 主加载指示器
-              <div className="flex justify-start">
-                <div className="p-3 rounded-lg bg-muted animate-pulse">
-                  正在思考中...
+            {/* 修改加载指示器的结构，使其包含 Bot 图标 */}
+            {isLoading && activeStreamingIntervals.current === 0 && ( 
+              <div className="flex w-full justify-start">
+                <div className="flex items-start gap-2">
+                  {/* 头像图标 */}
+                  <div className="flex-shrink-0 order-1 mt-1">
+                    <Bot className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  {/* 加载提示内容容器 */}
+                  <div className="order-2">
+                    <div className="p-3 rounded-lg bg-muted animate-pulse">
+                      正在思考中...
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
