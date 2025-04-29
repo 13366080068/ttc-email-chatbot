@@ -37,7 +37,7 @@ export default function EmailCard({ initialData, onAccept, onCancel, isLoading, 
   const isDisabled = isLoading || isSuperseded;
 
   return (
-    <Card className={`w-full max-w-md mx-auto mt-4 border-primary border-2 shadow-lg ${isSuperseded ? 'opacity-70 border-muted' : ''}`}>
+    <Card className={`w-full mx-auto mt-4 border-primary border-2 shadow-lg ${isSuperseded ? 'opacity-70 border-muted' : ''}`}>
       <CardHeader>
         <CardTitle>发送邮件确认 {isSuperseded && <span className="text-sm text-muted-foreground">(已更新)</span>}</CardTitle>
       </CardHeader>

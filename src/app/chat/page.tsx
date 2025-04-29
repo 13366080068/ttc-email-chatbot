@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import EmailCard from '@/components/EmailCard'; // 导入邮件卡片组件
 import { Trash2 } from 'lucide-react'; // 导入 Trash2 图标
+// 导入 User 和 Bot 图标
+import { User, Bot } from 'lucide-react';
 // 导入 Tooltip 组件
 import {
   Tooltip,
@@ -406,35 +408,59 @@ export default function ChatPage() {
                 msg.toolName === 'sendEmail' && 
                 messages.slice(index + 1).some(laterMsg => laterMsg.role === 'assistant');
 
+              // 决定图标和对齐方式
+              const isUser = msg.role === 'user';
+              const IconComponent = isUser ? User : Bot;
+              const alignmentClasses = isUser ? 'justify-end' : 'justify-start';
+              const messageBubbleClasses = isUser ? 'bg-primary text-primary-foreground' : 'bg-muted';
+              const iconOrderClass = isUser ? 'order-2' : 'order-1';
+              const bubbleOrderClass = isUser ? 'order-1' : 'order-2';
+              const containerGapClass = 'gap-2';
+
               return (
-                <div key={msg.id} data-message-id={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {/* 根据消息类型渲染 */} 
-                  {msg.type === 'text' ? (
-                    <div
-                      className={`p-3 rounded-lg max-w-[75%] ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                        }`}
-                    >
-                      {msg.content}
+                // 最外层容器控制左右对齐, 添加 w-full
+                <div key={msg.id} data-message-id={msg.id} className={`flex w-full ${alignmentClasses}`}>
+                  {/* 内层容器控制图标和气泡的排列及间距，也根据用户/助手调整 */}
+                  <div className={`flex w-full items-start ${containerGapClass} ${isUser ? 'justify-end' : ''}`}> {/* 用户时内层也 justify-end */}
+                    {/* 头像图标 */}
+                    <div className={`flex-shrink-0 ${iconOrderClass} mt-1`}> 
+                      <IconComponent className="h-6 w-6 text-muted-foreground" />
                     </div>
-                  ) : msg.type === 'tool' && msg.toolName === 'sendEmail' && msg.toolData ? (
-                    // Email Card 渲染，传递 isSuperseded prop
-                    <EmailCard 
-                      initialData={msg.toolData as EmailToolArgs} 
-                      onAccept={(data) => handleEmailAccept(msg.id, data)} 
-                      onCancel={() => handleEmailCancel(msg.id)} 
-                      isLoading={isSendingEmail} 
-                      isSuperseded={isSuperseded} // 传递计算出的状态
-                    />
-                  ) : msg.type === 'tool' && msg.toolName === 'sendEmail' && !msg.toolData ? (
-                    <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
-                      无效的邮件工具数据
-                    </div>
-                  ) : (
-                    // 可以为其他工具类型或未知类型添加占位符
-                    <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
-                      不支持的工具类型或消息
-                    </div>
-                  )}
+
+                    {/* 根据消息类型渲染内容 */}
+                    {msg.type === 'text' ? (
+                      // 文本消息使用带 max-w 的容器
+                      <div className={`${bubbleOrderClass} max-w-[75%]`}>
+                        <div
+                          className={`p-3 rounded-lg ${messageBubbleClasses}`}
+                        >
+                          {msg.content}
+                        </div>
+                      </div>
+                    ) : msg.type === 'tool' && msg.toolName === 'sendEmail' && msg.toolData ? (
+                      <div className={`${bubbleOrderClass} w-full max-w-md`}>
+                        <EmailCard 
+                          initialData={msg.toolData as EmailToolArgs} 
+                          onAccept={(data) => handleEmailAccept(msg.id, data)} 
+                          onCancel={() => handleEmailCancel(msg.id)} 
+                          isLoading={isSendingEmail} 
+                          isSuperseded={isSuperseded}
+                        />
+                      </div>
+                    ) : msg.type === 'tool' && msg.toolName === 'sendEmail' && !msg.toolData ? (
+                      <div className={`${bubbleOrderClass} max-w-[75%]`}> {/* 错误消息保持 max-w-[75%] */}
+                        <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
+                          无效的邮件工具数据
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`${bubbleOrderClass} max-w-[75%]`}> {/* 其他未知消息也加容器 */}
+                        <div className="p-3 rounded-lg bg-destructive text-destructive-foreground">
+                          不支持的工具类型或消息
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
